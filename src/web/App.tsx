@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useStore } from "./hooks/useStore";
+import { useStore, needsSetup } from "./hooks/useStore";
 import { I18nProvider, useI18n } from "./i18n";
 import TopBar from "./components/TopBar";
 import Dashboard from "./components/Dashboard";
@@ -12,6 +12,7 @@ import AgentDetail from "./components/AgentDetail";
 import TaskDetail from "./components/TaskDetail";
 import GlobalSearch from "./components/GlobalSearch";
 import ToastContainer, { toast } from "./components/ToastContainer";
+import SetupOverlay from "./components/SetupOverlay";
 
 export type Tab = "dashboard" | "agents" | "tasks" | "tree" | "network" | "logs";
 
@@ -97,6 +98,7 @@ function AppInner() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-transparent">
+      {needsSetup() && <SetupOverlay />}
       <TopBar
         tab={tab}
         setTab={setTab}

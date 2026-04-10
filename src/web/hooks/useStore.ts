@@ -5,6 +5,44 @@ import * as poller from "./directPoller";
 const STORAGE_KEY = "eacn-viz-endpoint";
 const DEFAULT_ENDPOINT = "http://175.102.130.69:37892";
 
+// --- Detect mode ---
+
+function isStaticDeployment(): boolean {
+  const host = location.hostname;
+  if (host.endsWith(".github.io")) return true;
+  if (host.endsWith(".pages.dev")) return true;
+  if (host.endsWith(".netlify.app")) return true;
+  if (host.endsWith(".vercel.app")) return true;
+  if (location.pathname.includes("/eacn-viz")) return true;
+  return false;
+}
+
+export function needsSetup(): boolean {
+  return isStaticDeployment() && !getSavedEndpoint();
+}
+
+// --- Endpoint management ---
+
+export function getSavedEndpoint(): string {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) return saved;
+  } catch { /* ignore */ }
+  // On static deployments (HTTPS), the HTTP default won't work — return empty.
+  return isStaticDeployment() ? "" : DEFAULT_ENDPOINT;
+}
+
+export function saveEndpoint(ep: string) {
+  try { localStorage.setItem(STORAGE_KEY, ep); } catch { /* ignore */ }
+}
+
+export function reconnectWithEndpoint(endpoint: string) {
+  saveEndpoint(endpoint);
+  location.reload();
+}
+
+// --- Snapshot state ---
+
 const empty: NetworkSnapshot = {
   tasks: [], agents: [], cluster: null, logs: [],
   connected: false, eacnEndpoint: "", lastUpdate: 0,
@@ -21,18 +59,14 @@ function applyMessage(msg: WsMessage) {
     case "tasks:update": {
       const prev = snapshot.tasks;
       const next = msg.data;
-      if (prev.length === next.length && prev.every((t, i) => t.id === next[i].id && t.status === next[i].status && t.bids.length === next[i].bids.length && t.results.length === next[i].results.length)) {
-        return;
-      }
+      if (prev.length === next.length && prev.every((t, i) => t.id === next[i].id && t.status === next[i].status && t.bids.length === next[i].bids.length && t.results.length === next[i].results.length)) return;
       snapshot = { ...snapshot, tasks: next, lastUpdate: Date.now() };
       break;
     }
     case "agents:update": {
       const prev = snapshot.agents;
       const next = msg.data;
-      if (prev.length === next.length && prev.every((a, i) => a.agent_id === next[i].agent_id && a.reputation === next[i].reputation)) {
-        return;
-      }
+      if (prev.length === next.length && prev.every((a, i) => a.agent_id === next[i].agent_id && a.reputation === next[i].reputation)) return;
       snapshot = { ...snapshot, agents: next, lastUpdate: Date.now() };
       break;
     }
@@ -40,9 +74,7 @@ function applyMessage(msg: WsMessage) {
     case "logs:update": {
       const prev = snapshot.logs;
       const next = msg.data;
-      if (prev.length === next.length && prev.length > 0 && prev[0].timestamp === next[0].timestamp) {
-        return;
-      }
+      if (prev.length === next.length && prev.length > 0 && prev[0].timestamp === next[0].timestamp) return;
       snapshot = { ...snapshot, logs: next, lastUpdate: Date.now() };
       break;
     }
@@ -51,41 +83,18 @@ function applyMessage(msg: WsMessage) {
   notify();
 }
 
-// --- Endpoint management ---
-
-export function getSavedEndpoint(): string {
-  try {
-    return localStorage.getItem(STORAGE_KEY) || DEFAULT_ENDPOINT;
-  } catch {
-    return DEFAULT_ENDPOINT;
-  }
-}
-
-export function saveEndpoint(ep: string) {
-  try { localStorage.setItem(STORAGE_KEY, ep); } catch { /* ignore */ }
-}
-
-// --- Detect mode: if we can reach /ws, use WS; otherwise use direct polling ---
-
-function isStaticDeployment(): boolean {
-  // On GitHub Pages or any static host, there's no /ws endpoint on the same origin
-  // We detect this by checking if our origin is a github.io domain or similar
-  const host = location.hostname;
-  if (host.endsWith(".github.io")) return true;
-  if (host.endsWith(".pages.dev")) return true;
-  if (host.endsWith(".netlify.app")) return true;
-  if (host.endsWith(".vercel.app")) return true;
-  // Also check if we have a base path (typical for GitHub Pages)
-  if (location.pathname.includes("/eacn-viz")) return true;
-  return false;
-}
-
 // --- Direct polling mode ---
 
 function startDirectPolling(): () => void {
   let cancelled = false;
   let domains = new Set<string>();
   const endpoint = getSavedEndpoint();
+
+  if (!endpoint) {
+    snapshot = { ...snapshot, eacnEndpoint: "", connected: false };
+    notify();
+    return () => {};
+  }
 
   snapshot = { ...snapshot, eacnEndpoint: endpoint };
   notify();
@@ -140,14 +149,12 @@ function startDirectPolling(): () => void {
     notify();
   }
 
-  // Initial poll
   pollHealth().then(() => {
     pollTasks();
     pollLogs();
     pollCluster().then(() => pollAgents());
   });
 
-  // Set up intervals (same as server)
   const intervals = [
     setInterval(pollTasks, 3000),
     setInterval(pollLogs, 3000),
@@ -210,11 +217,4 @@ export function useStore(): NetworkSnapshot {
   }, []);
 
   return useSyncExternalStore(subscribe, () => snapshot);
-}
-
-/** Reconnect with a new endpoint (for direct polling mode). */
-export function reconnectWithEndpoint(endpoint: string) {
-  saveEndpoint(endpoint);
-  // Force reload to restart polling with new endpoint
-  location.reload();
 }

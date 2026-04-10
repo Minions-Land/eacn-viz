@@ -145,6 +145,14 @@ const translations = {
   "toast.disconnected": { en: "EACN node disconnected", zh: "EACN 节点连接断开" },
   "toast.reconnected": { en: "EACN node reconnected", zh: "EACN 节点已重新连接" },
   "toast.exported": { en: "Snapshot exported", zh: "快照已导出" },
+
+  // Setup overlay
+  "setup.title": { en: "Connect to EACN Network", zh: "连接 EACN 网络" },
+  "setup.desc": { en: "Enter your EACN proxy endpoint (HTTPS required for browser access).", zh: "输入 EACN 代理端点（浏览器访问需要 HTTPS）。" },
+  "setup.placeholder": { en: "https://your-proxy.workers.dev", zh: "https://your-proxy.workers.dev" },
+  "setup.connect": { en: "Connect", zh: "连接" },
+  "setup.hint": { en: "The EACN API must be accessible via HTTPS with CORS enabled. Deploy the included Cloudflare Worker proxy if your node only supports HTTP.", zh: "EACN API 需要通过 HTTPS 访问并启用 CORS。如果节点只支持 HTTP，请部署项目内附带的 Cloudflare Worker 代理。" },
+  "setup.loading": { en: "Connecting...", zh: "正在连接..." },
 } as const;
 
 type TranslationKey = keyof typeof translations;
@@ -166,10 +174,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const t = useCallback(
-    (key: TranslationKey, params?: Record<string, string | number>) => {
+    (key: TranslationKey, params?: Record<string, string | number>): string => {
       const entry = translations[key];
       if (!entry) return key;
-      let text = entry[locale];
+      let text: string = entry[locale];
       if (params) {
         for (const [k, v] of Object.entries(params)) {
           text = text.replace(`{${k}}`, String(v));
